@@ -40,10 +40,9 @@ One GCP project provides the OAuth2 client credentials. Each Gmail account autho
 
 Fork `@gongrzhe/server-gmail-autoauth-mcp` source into `container/agent-runner/src/gmail-mcp-server.ts`.
 
-**Key changes:**
+**Key change:** The server already supports `GMAIL_CREDENTIALS_PATH` env var (falls back to `~/.gmail-mcp/`). It also already supports `GMAIL_OAUTH_PATH` for the client credentials file. Token refreshes are handled in-memory by the `googleapis` OAuth2 client — no disk writes during normal operation. The only disk write happens during the one-time OAuth auth flow, which runs on the host during setup.
 
-1. Read credentials from `GMAIL_CREDENTIALS_PATH` env var instead of hardcoded `~/.gmail-mcp/`. Fallback to `~/.gmail-mcp/` if unset for backward compatibility. The directory must contain `gcp-oauth.keys.json` (client credentials) and `token.json` (account refresh token).
-2. Handle token refresh in-memory only. Since credentials are mounted read-only, the server must not attempt to write refreshed tokens to disk. The `googleapis` OAuth2 client refreshes access tokens automatically; we intercept the `tokens` event but do not persist.
+The credentials directory must contain `gcp-oauth.keys.json` (client credentials) and `credentials.json` (account refresh token).
 
 The server is a stdio MCP server — spawned as a child process by the Claude Code SDK when an agent session starts, communicates over stdin/stdout, dies when the session ends. No HTTP server, no persistent process.
 
@@ -103,9 +102,9 @@ The agent sees tools like `mcp__gmail_consulting__search_emails`.
 
 1. Read `groups/<name>/gmail.json`
 2. Mount `~/.gmail-mcp/gcp-oauth.keys.json` → `/workspace/gmail/<email>/gcp-oauth.keys.json` (ro)
-3. Mount `~/.gmail-mcp/tokens/<email>.json` → `/workspace/gmail/<email>/token.json` (ro)
+3. Mount `~/.gmail-mcp/tokens/<email>.json` → `/workspace/gmail/<email>/credentials.json` (ro)
 
-The MCP server expects two files in `GMAIL_CREDENTIALS_PATH`: `gcp-oauth.keys.json` and `token.json`.
+The MCP server expects two files in `GMAIL_CREDENTIALS_PATH`: `gcp-oauth.keys.json` (OAuth client) and `credentials.json` (account token).
 
 Groups without `gmail.json` get no Gmail mounts.
 
