@@ -120,6 +120,42 @@ AskUserQuestion: What label should the Gmail server use? This becomes the tool p
 
 - **Label name** — A short identifier for this Gmail account
 
+AskUserQuestion: Should incoming emails on `<label>` (`<email>`) automatically trigger the agent in `<group>`?
+
+- **Yes** — Channel mode: new Primary inbox emails are delivered to the group automatically
+- **No** — Tool-only: the agent can read/send email when asked, but won't monitor the inbox
+
+If the user chooses channel mode:
+
+1. Add `gmailChannel` config to the group's `.mcp.json`:
+
+```json
+{
+  "gmailChannel": {
+    "<label>": { "enabled": true }
+  }
+}
+```
+
+Merge with existing `.mcp.json` content — don't overwrite.
+
+2. Create or update `~/.gmail-mcp/channel-config.json` with defaults if this account doesn't have an entry yet:
+
+```json
+{
+  "<label>": {
+    "pollInterval": 30,
+    "filter": "is:unread category:primary"
+  }
+}
+```
+
+3. Register the channel JID in `registered_groups`:
+
+```bash
+sqlite3 store/messages.db "INSERT OR REPLACE INTO registered_groups (jid, name, folder, trigger_pattern, added_at, requires_trigger) VALUES ('gm:<label>:<group_folder>', 'Gmail (<label>)', '<group_folder>', '.*', datetime('now'), 0)"
+```
+
 ### Step 3a: Create `.mcp.json` for the group
 
 This tells the Claude Code SDK to spawn the Gmail MCP server for this group's agent.
