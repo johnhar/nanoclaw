@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import fs from 'fs';
+import type { ChannelOpts } from './registry.js';
+import type { GmailAccountConfig } from './gmail.js';
 
 // Mock filesystem for discovery tests
 vi.mock('fs');
@@ -109,5 +111,81 @@ describe('Gmail channel discovery', () => {
     const { discoverGmailAccounts } = await import('./gmail.js');
     const accounts = discoverGmailAccounts('/mock-project');
     expect(accounts).toHaveLength(0);
+  });
+});
+
+describe('GmailChannel', () => {
+  const mockConfig: GmailAccountConfig = {
+    label: 'test',
+    email: 'test@gmail.com',
+    groups: ['work_team'],
+    pollInterval: 30,
+    filter: 'is:unread category:primary',
+    tokenPath: '/mock-home/.gmail-mcp/tokens/test@gmail.com.json',
+    oauthKeysPath: '/mock-home/.gmail-mcp/gcp-oauth.keys.json',
+  };
+
+  const mockOpts: ChannelOpts = {
+    onMessage: vi.fn(),
+    onChatMetadata: vi.fn(),
+    registeredGroups: vi.fn(() => ({})),
+  };
+
+  it('has correct name based on label', async () => {
+    const { GmailChannel } = await import('./gmail.js');
+    const channel = new GmailChannel(mockConfig, mockOpts);
+    expect(channel.name).toBe('gmail_test');
+  });
+
+  it('isConnected returns false before connect', async () => {
+    const { GmailChannel } = await import('./gmail.js');
+    const channel = new GmailChannel(mockConfig, mockOpts);
+    expect(channel.isConnected()).toBe(false);
+  });
+
+  it('ownsJid matches jids with correct label prefix', async () => {
+    const { GmailChannel } = await import('./gmail.js');
+    const channel = new GmailChannel(mockConfig, mockOpts);
+    expect(channel.ownsJid('gm:test:work_team')).toBe(true);
+    expect(channel.ownsJid('gm:test:other_group')).toBe(true);
+    expect(channel.ownsJid('gm:other:work_team')).toBe(false);
+    expect(channel.ownsJid('wa:test:work_team')).toBe(false);
+  });
+
+  it('disconnect sets connected to false', async () => {
+    const { GmailChannel } = await import('./gmail.js');
+    const channel = new GmailChannel(mockConfig, mockOpts);
+    // Manually set connected state to simulate post-connect
+    (channel as any).connected = true;
+    expect(channel.isConnected()).toBe(true);
+    await channel.disconnect();
+    expect(channel.isConnected()).toBe(false);
+  });
+
+  it('disconnect clears poll timer and backoff timeout', async () => {
+    const { GmailChannel } = await import('./gmail.js');
+    const channel = new GmailChannel(mockConfig, mockOpts);
+    // Simulate active timers
+    (channel as any).pollTimer = setInterval(() => {}, 10000);
+    (channel as any).backoffTimeout = setTimeout(() => {}, 10000);
+    (channel as any).connected = true;
+
+    await channel.disconnect();
+
+    expect((channel as any).pollTimer).toBeNull();
+    expect((channel as any).backoffTimeout).toBeNull();
+    expect(channel.isConnected()).toBe(false);
+  });
+
+  it('formatEmailMessage creates correct message format', async () => {
+    const { GmailChannel } = await import('./gmail.js');
+    const result = GmailChannel.formatEmailMessage(
+      'sender@example.com',
+      'Meeting Tomorrow',
+      'Hi, can we meet at 3pm?',
+    );
+    expect(result).toBe(
+      '[Email from sender@example.com] Subject: Meeting Tomorrow\n\nHi, can we meet at 3pm?',
+    );
   });
 });
