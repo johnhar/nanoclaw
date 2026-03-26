@@ -18,26 +18,46 @@ Setup and ongoing management are handled by two skills: `/add-gmail` and `/manag
 - **Flexible assignment** — Accounts can be associated, disassociated, and re-assigned at any time without re-authorizing.
 - **Channel mode** — Groups that need proactive email delivery (e.g., a work inbox that should route support threads to an agent) can enable inbox polling without any additional infrastructure.
 
+## Comparing With Previous Gmail Skill
+
+The upstream `/add-gmail` skill supported a single Gmail account with credentials hardcoded into the container runner. Our version replaces it entirely:
+
+| | Previous | Current |
+|---|---|---|
+| Accounts | Single account (`credentials.json`) | Multiple accounts, each with a label |
+| Credential isolation | Single credential mounted to all containers | Per-group mounts via `additionalMounts` — each container only sees its own tokens |
+| Channel code | Merged from a separate repo (`nanoclaw-gmail.git`) | Part of the `skill/gmail` branch |
+| Channel mode | All-or-nothing, chosen at setup time | Toggleable per account-per-group via `/manage-gmail` |
+| Dependency | `googleapis` (full Google API bundle) | `@googleapis/gmail` (Gmail-only, lightweight) |
+| Management | Manual file/config edits to change anything | `/manage-gmail` skill for associate, disassociate, toggle, remove |
+| MCP server config | Hardcoded in agent-runner source | Per-group `.mcp.json` files |
+
+**What stayed the same:** GCP OAuth setup flow, `@gongrzhe/server-gmail-autoauth-mcp` as the MCP server, the basic channel architecture (polling, fan-out, threaded replies), and the two-mode concept (tool-only vs channel).
+
 ## User Experience
 
 ### `/add-gmail` — Initial setup
 
-1. **GCP OAuth setup** — If no OAuth credentials exist, the skill walks through creating a GCP project, enabling the Gmail API, and downloading the OAuth client JSON. The file is saved to `~/.gmail-mcp/gcp-oauth.keys.json`.
-2. **Account authorization** — Runs `npx tsx scripts/gmail-oauth.ts <email>`, which opens Google's consent screen and waits for the OAuth callback. The token is saved to `~/.gmail-mcp/tokens/<email>.json`. Additional accounts can be added in the same session.
-3. **Group assignment** — For each account, the user picks a group folder and a short label (e.g., `consulting`). The label becomes the MCP server name (`gmail_consulting`) and the tool prefix (`mcp__gmail_consulting__*`).
-4. **Channel mode** — Optionally enable inbox polling for the account in that group. This registers a channel JID (`gm:<label>:<group_folder>`) and adds `gmailChannel` config to the group's `.mcp.json`.
-5. **Build and restart** — Rebuilds the container and restarts NanoClaw.
+1. **GCP OAuth setup** — If this is the first Gmail account, the skill walks you through creating a Google Cloud project, enabling the Gmail API, and downloading OAuth credentials.
+2. **Account authorization** — Opens Google's consent screen in your browser. Sign in and grant access. You can add multiple accounts in the same session.
+3. **Group assignment** — Pick which group each account belongs to and give it a short label (e.g., `consulting`). The label identifies the account in tools and logs.
+4. **Channel mode** — Choose whether the account should just provide email tools (tool-only) or also monitor the inbox and deliver new emails to the group automatically (channel mode).
+5. **Build and restart** — NanoClaw rebuilds and restarts to pick up the new configuration.
 
 ### `/manage-gmail` — Ongoing operations
 
-Shows a summary table of all authorized accounts, their group assignments, and current mode. Provides four operations:
+Shows a summary table of all authorized accounts, their group assignments, and current mode (tool-only or channel). From there you can:
 
-- **Associate** — Add an existing account to a group (with optional channel mode).
-- **Disassociate** — Remove an account from a group. The token is kept; the account can be re-assigned later.
-- **Toggle channel mode** — Switch an account-group pair between tool-only and channel mode.
-- **Remove account** — Delete the token and disassociate from all groups.
+- **Associate** — Add an existing account to another group.
+- **Disassociate** — Remove an account from a group without deleting it.
+- **Toggle channel mode** — Switch between tool-only and channel mode for any account-group pair.
+- **Remove account** — Delete an account entirely and disassociate it from all groups.
 
-Changes that affect channel registration require a restart. Tool-only association changes take effect on the next agent invocation.
+Operations that change channel registration require a restart (the skill warns you). Tool-only changes take effect on the next agent invocation.
+
+### Troubleshooting
+
+If something isn't working — Gmail tools not loading, credentials not found, emails not being detected — use `/debug` to diagnose the issue.
 
 ## Architecture
 
@@ -144,9 +164,7 @@ To add a new Gmail account programmatically:
 5. Insert the channel JID row into `registered_groups`.
 6. Rebuild and restart.
 
-### Extending
+### Possible Future Enhancements
 
 - **Custom poll filter** — Set `filter` in `~/.gmail-mcp/channel-config.json` for the account label (e.g., `is:unread label:support` to only process support-labeled threads).
 - **Custom poll interval** — Set `pollInterval` (seconds) in the same config file.
-- **Multiple accounts per group** — Add additional `gmail_{label}` entries to the group's `.mcp.json` and corresponding mounts. Each account gets its own `GmailChannel` instance.
-- **New channel types** — Follow the same pattern: implement `Channel`, call `registerChannel` at module load, import from `src/channels/index.ts`.
