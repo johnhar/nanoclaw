@@ -8,79 +8,62 @@
 
 NanoClaw needs to process emails across multiple Gmail accounts (personal + multiple work accounts). The current `/add-gmail` skill uses `@gongrzhe/server-gmail-autoauth-mcp`, which is single-account (hardcoded to `~/.gmail-mcp/`) and downloaded via `npx` at runtime. There is no way to give different groups access to different Gmail accounts.
 
-Additionally, NanoClaw has no general mechanism for per-group MCP server configuration — MCP servers are hardcoded in the agent-runner and identical for all groups.
-
 ## Goals
 
 1. Support N Gmail accounts, each authorized via OAuth2 against a single GCP project
 2. Per-group Gmail access — each group's agent gets only the Gmail account assigned to it
 3. Credentials never exposed to the AI agent (only accessible through MCP tool calls)
-4. **General-purpose per-group MCP server configuration** — not Gmail-specific; any MCP server can be added to any group via a config file
-5. Delivered as a new `/add-gmail-multi` skill; existing `/add-gmail` untouched
+4. Delivered as a new `/add-gmail-multi` skill; existing `/add-gmail` untouched
 
 ## Non-Goals
 
 - Gmail channel mode (inbox polling that triggers agents on new emails) — future work
 - Host-side MCP server (like OneCLI) — future work; start with in-container stdio
 - Per-group tool restrictions (e.g. read-only for some groups) — future work
+- Modifying group registration to accept MCP config — future work
 
 ## Architecture
 
-### Per-Group MCP Server Configuration (General)
+### Per-Group MCP Server Configuration
 
-Groups can define additional MCP servers via an optional config file:
+Each group can have additional MCP servers configured via `.mcp.json` in its group folder:
 
 ```
-groups/<name>/mcp-servers.json
+groups/work_consulting/.mcp.json
 ```
 
 ```json
 {
-  "gmail_consulting": {
-    "command": "npx",
-    "args": ["-y", "@gongrzhe/server-gmail-autoauth-mcp"],
-    "env": {
-      "GMAIL_CREDENTIALS_PATH": "/workspace/gmail/work@consulting.co",
-      "GMAIL_OAUTH_PATH": "/workspace/gmail/gcp-oauth.keys.json"
+  "mcpServers": {
+    "gmail_consulting": {
+      "command": "npx",
+      "args": ["-y", "@gongrzhe/server-gmail-autoauth-mcp"],
+      "env": {
+        "GMAIL_CREDENTIALS_PATH": "/workspace/gmail/work@consulting.co",
+        "GMAIL_OAUTH_PATH": "/workspace/gmail/gcp-oauth.keys.json"
+      }
     }
   }
 }
 ```
 
-This is a general-purpose mechanism. Any MCP server can be configured per-group — Gmail, calendar, Notion, etc. The format matches the Claude Code SDK's `mcpServers` config exactly.
+This uses the **standard Claude Code `.mcp.json` mechanism**. The agent-runner already sets `cwd: '/workspace/group'` and `settingSources: ['project', 'user']`, which tells the Claude Code SDK to load `.mcp.json` from the working directory. MCP servers defined in `.mcp.json` are merged with those passed programmatically (the nanoclaw MCP server).
 
-**Backward compatible:** If `mcp-servers.json` doesn't exist, the agent-runner uses only the default nanoclaw MCP server, identical to today's behavior.
+**No agent-runner code changes needed** for MCP server registration. The SDK handles it.
 
-### Agent-Runner Changes
+**`allowedTools`:** The agent-runner uses `permissionMode: 'bypassPermissions'`, which auto-approves MCP tools. If testing reveals that `.mcp.json` tools also need explicit `allowedTools` entries, one line is added to the agent-runner: `'mcp__gmail_*'`. This is the only potential agent-runner change.
 
-`container/agent-runner/src/index.ts` currently hardcodes MCP servers. Change to merge in per-group servers:
+**Backward compatible:** Groups without `.mcp.json` behave identically to today.
 
-1. On startup, read `/workspace/group/mcp-servers.json` (if present)
-2. Merge entries into the `mcpServers` object alongside the nanoclaw server
-3. Add `mcp__<name>__*` to `allowedTools` for each entry
+### How `.mcp.json` gets created
 
-```typescript
-const groupMcpPath = '/workspace/group/mcp-servers.json';
-let groupMcpServers = {};
-if (fs.existsSync(groupMcpPath)) {
-  groupMcpServers = JSON.parse(fs.readFileSync(groupMcpPath, 'utf8'));
-}
+The `.mcp.json` file is **not** created during group registration. Groups are created first (via `@Andy add group "consulting"` in the main channel), then `/add-gmail-multi` assigns Gmail accounts to existing groups by writing `.mcp.json` into their folders.
 
-// In query():
-mcpServers: {
-  nanoclaw: { ... },
-  ...groupMcpServers,
-},
-allowedTools: [
-  ...,
-  'mcp__nanoclaw__*',
-  ...Object.keys(groupMcpServers).map(name => `mcp__${name}__*`),
-],
-```
+The workflow is two separate steps:
+1. **Create the group** — `@Andy add group "consulting"` (registers the group, creates the folder)
+2. **Assign Gmail** — Run `/add-gmail-multi`, which asks "which group?" and writes the `.mcp.json`
 
-Groups without the file behave exactly as today.
-
-### Credential Layout (Gmail-Specific)
+### Credential Layout
 
 ```
 ~/.gmail-mcp/
@@ -105,8 +88,6 @@ Token refreshes are handled in-memory by the `googleapis` OAuth2 client — no d
 
 The server is a stdio MCP server — spawned as a child process by the Claude Code SDK when an agent session starts, communicates over stdin/stdout, dies when the session ends.
 
-Future: may migrate to a custom long-lived multi-account MCP server, which would also eliminate the `npx` startup cost.
-
 **Tools exposed** (~15):
 
 | Tool | Purpose |
@@ -124,34 +105,40 @@ Future: may migrate to a custom long-lived multi-account MCP server, which would
 
 ### Container-Runner Changes
 
-`src/container-runner.ts` mounts credentials into the container based on the group's `mcp-servers.json`. For Gmail accounts:
+`src/container-runner.ts` mounts Gmail credentials into the container based on the group's `.mcp.json`:
 
-1. Read `groups/<name>/mcp-servers.json`
-2. For entries with `GMAIL_CREDENTIALS_PATH` env vars, extract the account email and mount:
+1. Read `groups/<name>/.mcp.json` (if present)
+2. For MCP server entries with `GMAIL_CREDENTIALS_PATH` or `GMAIL_OAUTH_PATH` env vars, mount the referenced credential files:
    - `~/.gmail-mcp/gcp-oauth.keys.json` → `/workspace/gmail/gcp-oauth.keys.json` (ro)
    - `~/.gmail-mcp/tokens/<email>.json` → `/workspace/gmail/<email>/credentials.json` (ro)
 
-Groups without `mcp-servers.json` get no extra mounts.
+Groups without `.mcp.json` get no extra mounts.
 
-### OAuth Setup Flow
+### `/add-gmail-multi` Skill Flow
 
-The `/add-gmail-multi` skill walks the user through:
+The skill guides the user through setup and group assignment:
 
+**Phase 1: OAuth setup (one-time)**
 1. **GCP project setup** — Create project, enable Gmail API, download OAuth2 client JSON
 2. **Store client credentials** — Save to `~/.gmail-mcp/gcp-oauth.keys.json`
-3. **Per-account authorization** — For each account:
+3. **Per-account authorization** — For each Gmail account:
    - Run auth script that opens browser for OAuth consent
    - User signs into the specific Gmail account
    - Script stores refresh token in `~/.gmail-mcp/tokens/<email>.json`
-4. **Assign accounts to groups** — Create `groups/<name>/mcp-servers.json` with Gmail config
-5. **Build and restart** — Clear stale agent-runner copies, rebuild container, restart NanoClaw
+
+**Phase 2: Assign accounts to groups**
+4. **Ask which group** — "Which group should `work@consulting.co` be assigned to?"
+5. **Write `.mcp.json`** — Create/update `groups/<name>/.mcp.json` with the Gmail MCP server config
+6. **Build and restart** — Clear stale agent-runner copies, rebuild container, restart NanoClaw
+
+The skill can be re-run to add more accounts or assign accounts to additional groups.
 
 ### Data Flow
 
 ```
 Scheduled task fires for work_consulting group
   │
-  ├─ container-runner reads groups/work_consulting/mcp-servers.json
+  ├─ container-runner reads groups/work_consulting/.mcp.json
   │  → finds gmail_consulting entry with GMAIL_CREDENTIALS_PATH
   │
   ├─ Mounts ~/.gmail-mcp/gcp-oauth.keys.json (ro)
@@ -159,9 +146,8 @@ Scheduled task fires for work_consulting group
   │  → into /workspace/gmail/
   │
   ├─ Agent container starts
-  │  agent-runner reads /workspace/group/mcp-servers.json
+  │  Claude Code SDK loads /workspace/group/.mcp.json automatically
   │  → registers gmail_consulting MCP server (stdio, via npx)
-  │  → adds mcp__gmail_consulting__* to allowedTools
   │
   ├─ Agent calls mcp__gmail_consulting__search_emails(query: "is:unread")
   │  → MCP server loads credentials from GMAIL_CREDENTIALS_PATH
@@ -175,23 +161,25 @@ Scheduled task fires for work_consulting group
 
 | File | Change |
 |------|--------|
-| `container/agent-runner/src/index.ts` | Read `mcp-servers.json`, merge into mcpServers and allowedTools |
-| `src/container-runner.ts` | Parse `mcp-servers.json` to determine credential mounts per group |
-| `.claude/skills/add-gmail-multi/SKILL.md` | **New.** Skill for multi-account Gmail setup |
+| `src/container-runner.ts` | Parse group `.mcp.json` to determine credential mounts |
+| `.claude/skills/add-gmail-multi/SKILL.md` | **New.** Skill for multi-account Gmail setup and group assignment |
 | `scripts/gmail-oauth.ts` | **New.** OAuth authorization script for adding accounts |
+| `container/agent-runner/src/index.ts` | Possibly one line: add `'mcp__gmail_*'` to allowedTools (only if needed after testing) |
 
 ## Testing
 
-1. Verify groups without `mcp-servers.json` behave identically to today
+1. Verify groups without `.mcp.json` behave identically to today
 2. Set up GCP project with OAuth2 credentials
 3. Authorize 2 Gmail accounts (personal + work)
-4. Create 2 groups with different `mcp-servers.json` configs
+4. Create 2 groups, run `/add-gmail-multi` to assign different accounts
 5. Verify each group's agent only sees its assigned account's tools
 6. Verify tools work: search, read, send, archive
 7. Verify scheduled tasks can process emails autonomously
+8. Verify `.mcp.json` MCP tools are usable (test whether `allowedTools` change is needed)
 
 ## Future Work
 
 - **Custom long-lived MCP server** — Replace `@gongrzhe` with a custom multi-account MCP server (single process, `account` parameter per tool call). Eliminates per-session `npx` startup cost and simplifies credential management. Could run host-side like OneCLI for stronger credential isolation.
 - **Multi-account channel mode** — Extend `/add-gmail` channel mode to poll multiple inboxes
 - **Per-group access control** — Restrict tool operations per group (e.g. read-only)
+- **MCP config at group registration** — Extend `register_group` to accept MCP server config, so groups can be created with Gmail (or other MCP servers) in one step
