@@ -38,13 +38,17 @@ One GCP project provides the OAuth2 client credentials. Each Gmail account autho
 
 ### Gmail MCP Server
 
-Fork `@gongrzhe/server-gmail-autoauth-mcp` source into `container/agent-runner/src/gmail-mcp-server.ts`.
+Use `@gongrzhe/server-gmail-autoauth-mcp` as-is via `npx`. No fork needed.
 
-**Key change:** The server already supports `GMAIL_CREDENTIALS_PATH` env var (falls back to `~/.gmail-mcp/`). It also already supports `GMAIL_OAUTH_PATH` for the client credentials file. Token refreshes are handled in-memory by the `googleapis` OAuth2 client — no disk writes during normal operation. The only disk write happens during the one-time OAuth auth flow, which runs on the host during setup.
+The server already supports two env vars that enable multi-account:
+- `GMAIL_CREDENTIALS_PATH` — path to the directory containing `credentials.json` (account token)
+- `GMAIL_OAUTH_PATH` — path to `gcp-oauth.keys.json` (client credentials)
 
-The credentials directory must contain `gcp-oauth.keys.json` (client credentials) and `credentials.json` (account refresh token).
+Token refreshes are handled in-memory by the `googleapis` OAuth2 client — no disk writes during normal operation. The only disk write happens during the one-time OAuth auth flow, which runs on the host during setup.
 
 The server is a stdio MCP server — spawned as a child process by the Claude Code SDK when an agent session starts, communicates over stdin/stdout, dies when the session ends. No HTTP server, no persistent process.
+
+Future: may migrate to a custom long-lived multi-account MCP server, which would also eliminate the `npx` startup cost.
 
 **Tools exposed** (~15, inherited from @gongrzhe):
 
@@ -87,9 +91,12 @@ If the file doesn't exist, the group gets no Gmail MCP server.
 2. If an account is configured, register a Gmail MCP server instance:
    ```typescript
    mcpServers[`gmail_${accountLabel}`] = {
-     command: 'node',
-     args: [gmailMcpPath],
-     env: { GMAIL_CREDENTIALS_PATH: `/workspace/gmail/${accountEmail}` },
+     command: 'npx',
+     args: ['-y', '@gongrzhe/server-gmail-autoauth-mcp'],
+     env: {
+       GMAIL_CREDENTIALS_PATH: `/workspace/gmail/${accountEmail}`,
+       GMAIL_OAUTH_PATH: `/workspace/gmail/gcp-oauth.keys.json`,
+     },
    };
    ```
 3. Add `mcp__gmail_*` to `allowedTools`
@@ -150,7 +157,6 @@ Scheduled task fires for work_consulting group
 
 | File | Change |
 |------|--------|
-| `container/agent-runner/src/gmail-mcp-server.ts` | **New.** Forked Gmail MCP server with `GMAIL_CREDENTIALS_PATH` support |
 | `container/agent-runner/src/index.ts` | Dynamic MCP server registration based on group gmail config |
 | `src/container-runner.ts` | Mount Gmail credentials per-group based on `gmail.json` |
 | `.claude/skills/add-gmail-multi/SKILL.md` | **New.** Skill for multi-account Gmail setup |
@@ -167,7 +173,6 @@ Scheduled task fires for work_consulting group
 
 ## Future Work
 
-- **Extract to separate GitHub fork** — Once stable, move Gmail MCP server to its own repo for reuse
-- **Host-side MCP server** — Run on host like OneCLI for stronger credential isolation
+- **Custom long-lived MCP server** — Replace `@gongrzhe` with a custom multi-account MCP server (single process, `account` parameter per tool call). Eliminates per-session `npx` startup cost and simplifies credential management. Could run host-side like OneCLI for stronger credential isolation.
 - **Multi-account channel mode** — Extend `/add-gmail` channel mode to poll multiple inboxes
 - **Per-group access control** — Restrict tool operations per group (e.g. read-only)
