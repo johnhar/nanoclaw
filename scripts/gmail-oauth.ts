@@ -78,14 +78,26 @@ async function main() {
     prompt: 'consent',
   });
 
+  const TIMEOUT_MS = 120_000; // 2 minutes
+
   console.log(`\nAuthorizing: ${email}`);
   console.log('Opening browser for Google consent screen...');
   console.log('If browser does not open, visit:', authUrl);
+  console.log(`\nWaiting up to ${TIMEOUT_MS / 1000}s for authorization...`);
 
   const server = http.createServer();
   server.listen(3000);
 
   await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      server.close();
+      reject(
+        new Error(
+          `Authorization timed out after ${TIMEOUT_MS / 1000}s. The browser consent flow was not completed. Re-run the command to try again.`,
+        ),
+      );
+    }, TIMEOUT_MS);
+
     server.on('request', async (req, res) => {
       if (!req.url?.startsWith('/oauth2callback')) return;
 
@@ -95,6 +107,7 @@ async function main() {
       if (!code) {
         res.writeHead(400);
         res.end('No authorization code received.');
+        clearTimeout(timeout);
         reject(new Error('No code'));
         return;
       }
@@ -111,6 +124,7 @@ async function main() {
         res.end(
           `Authentication successful for ${email}! You can close this window.`,
         );
+        clearTimeout(timeout);
         server.close();
 
         console.log(`\nToken saved to: ${tokenPath}`);
@@ -118,6 +132,7 @@ async function main() {
       } catch (error) {
         res.writeHead(500);
         res.end('Authentication failed.');
+        clearTimeout(timeout);
         reject(error);
       }
     });

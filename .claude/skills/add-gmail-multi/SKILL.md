@@ -67,20 +67,32 @@ For each account the user provides, run:
 npx tsx scripts/gmail-oauth.ts <email>
 ```
 
-This opens a browser for OAuth consent. After authorization, verify:
+This opens a browser for OAuth consent. The script times out after 2 minutes if the user doesn't complete the flow.
+
+If the user sees an "app isn't verified" warning, tell them to click "Advanced" then "Go to [app name] (unsafe)" — this is normal for personal OAuth apps.
+
+After the script exits, verify the token was saved:
 
 ```bash
 ls ~/.gmail-mcp/tokens/<email>.json
 ```
 
-If the user sees an "app isn't verified" warning, tell them to click "Advanced" then "Go to [app name] (unsafe)" — this is normal for personal OAuth apps.
+If the token file exists, authorization succeeded:
 
 AskUserQuestion: Account authorized! Do you want to add another Gmail account?
 
 - **Yes** — Authorize another Gmail address
 - **No** — Continue to group assignment
 
-Repeat until the user says no.
+If the token file does NOT exist (script timed out or the user closed the browser):
+
+AskUserQuestion: Authorization for `<email>` didn't complete. What would you like to do?
+
+- **Retry** — Open the consent screen again for the same account
+- **Different account** — Try a different Gmail address instead
+- **Skip** — Continue without this account (you can add it later with `/add-gmail-multi`)
+
+Repeat until the user says no or skip.
 
 ## Phase 3: Assign Accounts to Groups
 
