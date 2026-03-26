@@ -78,26 +78,25 @@ async function main() {
     prompt: 'consent',
   });
 
-  const TIMEOUT_MS = 120_000; // 2 minutes
+  // Read logo for the success page
+  const logoPath = path.join(__dirname, '..', 'assets', 'nanoclaw-logo.png');
+  let logoDataUri = '';
+  try {
+    const logoData = fs.readFileSync(logoPath);
+    logoDataUri = `data:image/png;base64,${logoData.toString('base64')}`;
+  } catch {
+    // Logo not found — page will render without it
+  }
 
   console.log(`\nAuthorizing: ${email}`);
   console.log('Opening browser for Google consent screen...');
   console.log('If browser does not open, visit:', authUrl);
-  console.log(`\nWaiting up to ${TIMEOUT_MS / 1000}s for authorization...`);
+  console.log('\nWaiting for authorization...');
 
   const server = http.createServer();
   server.listen(3000);
 
   await new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      server.close();
-      reject(
-        new Error(
-          `Authorization timed out after ${TIMEOUT_MS / 1000}s. The browser consent flow was not completed. Re-run the command to try again.`,
-        ),
-      );
-    }, TIMEOUT_MS);
-
     server.on('request', async (req, res) => {
       if (!req.url?.startsWith('/oauth2callback')) return;
 
@@ -105,9 +104,8 @@ async function main() {
       const code = url.searchParams.get('code');
 
       if (!code) {
-        res.writeHead(400);
+        res.writeHead(400, { 'Content-Type': 'text/html' });
         res.end('No authorization code received.');
-        clearTimeout(timeout);
         reject(new Error('No code'));
         return;
       }
@@ -120,19 +118,28 @@ async function main() {
         const tokenPath = path.join(TOKENS_DIR, `${email}.json`);
         fs.writeFileSync(tokenPath, JSON.stringify(tokens, null, 2));
 
-        res.writeHead(200);
-        res.end(
-          `Authentication successful for ${email}! You can close this window.`,
-        );
-        clearTimeout(timeout);
+        const logoHtml = logoDataUri
+          ? `<img src="${logoDataUri}" alt="NanoClaw" style="width:200px;height:auto;margin-bottom:24px;">`
+          : '';
+
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>NanoClaw — Gmail Authorized</title></head>
+<body style="display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8f9fa;">
+<div style="text-align:center;padding:48px;">
+${logoHtml}
+<h1 style="font-size:28px;color:#1a1a1a;margin:0 0 12px;">Gmail Connected</h1>
+<p style="font-size:20px;color:#555;margin:0;">${email} authorized successfully.</p>
+<p style="font-size:18px;color:#888;margin:24px 0 0;">You can close this window.</p>
+</div>
+</body></html>`);
         server.close();
 
         console.log(`\nToken saved to: ${tokenPath}`);
         resolve();
       } catch (error) {
-        res.writeHead(500);
+        res.writeHead(500, { 'Content-Type': 'text/html' });
         res.end('Authentication failed.');
-        clearTimeout(timeout);
         reject(error);
       }
     });
