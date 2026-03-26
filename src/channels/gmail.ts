@@ -151,7 +151,9 @@ export class GmailChannel implements Channel {
 
   async connect(): Promise<void> {
     // Load OAuth credentials
-    const oauthKeys = JSON.parse(fs.readFileSync(this.config.oauthKeysPath, 'utf8'));
+    const oauthKeys = JSON.parse(
+      fs.readFileSync(this.config.oauthKeysPath, 'utf8'),
+    );
     const keys = oauthKeys.installed || oauthKeys.web;
     const tokens = JSON.parse(fs.readFileSync(this.config.tokenPath, 'utf8'));
 
@@ -163,7 +165,9 @@ export class GmailChannel implements Channel {
 
     // Auto-refresh: save updated tokens
     oauth2Client.on('tokens', (newTokens: any) => {
-      const existing = JSON.parse(fs.readFileSync(this.config.tokenPath, 'utf8'));
+      const existing = JSON.parse(
+        fs.readFileSync(this.config.tokenPath, 'utf8'),
+      );
       const merged = { ...existing, ...newTokens };
       fs.writeFileSync(this.config.tokenPath, JSON.stringify(merged, null, 2));
       logger.info({ label: this.config.label }, 'Gmail: refreshed OAuth token');
@@ -181,7 +185,11 @@ export class GmailChannel implements Channel {
     }, this.config.pollInterval * 1000);
 
     logger.info(
-      { label: this.config.label, email: this.config.email, groups: this.config.groups },
+      {
+        label: this.config.label,
+        email: this.config.email,
+        groups: this.config.groups,
+      },
       'Gmail channel connected',
     );
   }
@@ -215,7 +223,8 @@ export class GmailChannel implements Channel {
 
         const headers = msg.data.payload?.headers || [];
         const getHeader = (name: string) =>
-          headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value || '';
+          headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())
+            ?.value || '';
 
         const from = getHeader('From');
         const subject = getHeader('Subject');
@@ -225,7 +234,10 @@ export class GmailChannel implements Channel {
         const internalDate = msg.data.internalDate;
 
         // Skip emails from before channel started
-        if (internalDate && Number(internalDate) < new Date(this.startTimestamp).getTime()) {
+        if (
+          internalDate &&
+          Number(internalDate) < new Date(this.startTimestamp).getTime()
+        ) {
           await this.gmail.users.messages.modify({
             userId: 'me',
             id: msgRef.id,
@@ -248,7 +260,13 @@ export class GmailChannel implements Channel {
           const jid = `gm:${this.config.label}:${groupFolder}`;
 
           // Store per-group thread metadata for outbound replies
-          this.groupThreadMetadata.set(jid, { from, subject, messageId, references, threadId });
+          this.groupThreadMetadata.set(jid, {
+            from,
+            subject,
+            messageId,
+            references,
+            threadId,
+          });
           if (this.groupThreadMetadata.size > GmailChannel.MAX_THREAD_CACHE) {
             const oldest = this.groupThreadMetadata.keys().next().value;
             if (oldest) this.groupThreadMetadata.delete(oldest);
@@ -271,7 +289,13 @@ export class GmailChannel implements Channel {
           };
 
           this.opts.onMessage(jid, newMessage);
-          this.opts.onChatMetadata(jid, timestamp, `Gmail (${this.config.label})`, 'gmail', true);
+          this.opts.onChatMetadata(
+            jid,
+            timestamp,
+            `Gmail (${this.config.label})`,
+            'gmail',
+            true,
+          );
         }
 
         // Mark as read
@@ -283,16 +307,25 @@ export class GmailChannel implements Channel {
       }
     } catch (err: any) {
       if (err?.code === 429) {
-        logger.warn({ label: this.config.label }, 'Gmail: rate limited, backing off');
+        logger.warn(
+          { label: this.config.label },
+          'Gmail: rate limited, backing off',
+        );
         if (this.pollTimer) {
           clearInterval(this.pollTimer);
           const backoff = this.config.pollInterval * 2;
-          this.pollTimer = setInterval(() => this.poll().catch(() => {}), backoff * 1000);
+          this.pollTimer = setInterval(
+            () => this.poll().catch(() => {}),
+            backoff * 1000,
+          );
           this.backoffTimeout = setTimeout(() => {
             this.backoffTimeout = null;
             if (this.pollTimer) {
               clearInterval(this.pollTimer);
-              this.pollTimer = setInterval(() => this.poll().catch(() => {}), this.config.pollInterval * 1000);
+              this.pollTimer = setInterval(
+                () => this.poll().catch(() => {}),
+                this.config.pollInterval * 1000,
+              );
             }
           }, 60000);
         }
@@ -302,7 +335,9 @@ export class GmailChannel implements Channel {
     }
   }
 
-  private extractBody(payload: gmail_v1.Schema$MessagePart | undefined): string {
+  private extractBody(
+    payload: gmail_v1.Schema$MessagePart | undefined,
+  ): string {
     if (!payload) return '';
 
     if (payload.mimeType === 'text/plain' && payload.body?.data) {
@@ -324,7 +359,11 @@ export class GmailChannel implements Channel {
     return '';
   }
 
-  static formatEmailMessage(from: string, subject: string, body: string): string {
+  static formatEmailMessage(
+    from: string,
+    subject: string,
+    body: string,
+  ): string {
     return `[Email from ${from}] Subject: ${subject}\n\n${body}`;
   }
 
@@ -338,7 +377,9 @@ export class GmailChannel implements Channel {
     }
 
     const to = meta.from;
-    const subject = meta.subject.startsWith('Re:') ? meta.subject : `Re: ${meta.subject}`;
+    const subject = meta.subject.startsWith('Re:')
+      ? meta.subject
+      : `Re: ${meta.subject}`;
     const refs = [...meta.references, meta.messageId].filter(Boolean).join(' ');
 
     const emailLines = [
