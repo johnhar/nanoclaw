@@ -4,13 +4,13 @@
 
 **Goal:** Enable per-group Gmail access in NanoClaw using `.mcp.json` and `@gongrzhe/server-gmail-autoauth-mcp` with per-account credential directories.
 
-**Architecture:** The Claude Code SDK already loads `.mcp.json` from the agent's working directory. We add Gmail credential mounts in `container-runner.ts` based on each group's `.mcp.json`, write an OAuth setup script, and create a `/add-gmail-multi` skill. No MCP server fork, no agent-runner changes (unless `allowedTools` testing reveals they're needed).
+**Architecture:** The Claude Code SDK already loads `.mcp.json` from the agent's working directory. We add Gmail credential mounts in `container-runner.ts` based on each group's `.mcp.json`, write an OAuth setup script, and create a `/add-gmail` skill. No MCP server fork, no agent-runner changes (unless `allowedTools` testing reveals they're needed).
 
 **Tech Stack:** TypeScript, `@gongrzhe/server-gmail-autoauth-mcp` (npm), `googleapis` (for OAuth script), vitest (tests)
 
 **Spec:** `docs/superpowers/specs/2026-03-25-multi-account-gmail-mcp-design.md`
 
-**Contributing:** This is a skill (not a source code feature). Per `CONTRIBUTING.md`, source code changes should be minimal — only what's needed to support the credential mounts. The skill itself (`/add-gmail-multi`) is an operational skill with a utility script.
+**Contributing:** This is a skill (not a source code feature). Per `CONTRIBUTING.md`, source code changes should be minimal — only what's needed to support the credential mounts. The skill itself (`/add-gmail`) is an operational skill with a utility script.
 
 ---
 
@@ -21,7 +21,7 @@
 | `src/container-runner.ts` | **Modify.** Parse group `.mcp.json` to add Gmail credential mounts |
 | `src/container-runner.test.ts` | **Modify.** Test Gmail mount logic |
 | `scripts/gmail-oauth.ts` | **New.** OAuth authorization script — authorizes one Gmail account at a time, stores token in `~/.gmail-mcp/tokens/<email>.json` |
-| `.claude/skills/add-gmail-multi/SKILL.md` | **New.** Operational skill guiding GCP setup, OAuth per account, group assignment |
+| `.claude/skills/add-gmail/SKILL.md` | **New.** Operational skill guiding GCP setup, OAuth per account, group assignment |
 
 ---
 
@@ -313,16 +313,16 @@ Expected: Should not crash with syntax errors (will fail on missing keys file, w
 
 ---
 
-### Task 3: Create `/add-gmail-multi` skill
+### Task 3: Create `/add-gmail` skill
 
 **Files:**
-- Create: `.claude/skills/add-gmail-multi/SKILL.md`
+- Create: `.claude/skills/add-gmail/SKILL.md`
 
 - [ ] **Step 1: Write the skill**
 
 ```markdown
 ---
-name: add-gmail-multi
+name: add-gmail
 description: Add multi-account Gmail to NanoClaw. Supports multiple Gmail accounts with per-group access. Each group gets its own Gmail MCP server via .mcp.json. Guides through GCP OAuth setup, per-account authorization, and group assignment.
 ---
 
@@ -494,7 +494,7 @@ npx tsx scripts/gmail-oauth.ts <email>
 
 ### Adding another account later
 
-Re-run `/add-gmail-multi`. It detects existing setup and skips to account authorization.
+Re-run `/add-gmail`. It detects existing setup and skips to account authorization.
 ```
 
 - [ ] **Step 2: Verify skill format**
@@ -532,7 +532,7 @@ Remove the `.mcp.json` and verify the group still works normally — agent spawn
 
 - [ ] **Step 3: Test with real credentials**
 
-Run `/add-gmail-multi` end-to-end:
+Run `/add-gmail` end-to-end:
 1. Authorize a Gmail account
 2. Assign it to a group
 3. Rebuild and restart

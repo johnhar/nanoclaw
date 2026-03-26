@@ -13,7 +13,7 @@ NanoClaw needs to process emails across multiple Gmail accounts (personal + mult
 1. Support N Gmail accounts, each authorized via OAuth2 against a single GCP project
 2. Per-group Gmail access — each group's agent gets only the Gmail account assigned to it
 3. Credentials never exposed to the AI agent (only accessible through MCP tool calls)
-4. Delivered as a new `/add-gmail-multi` skill; existing `/add-gmail` untouched
+4. Delivered as a new `/add-gmail` skill; existing `/add-gmail` untouched
 
 ## Non-Goals
 
@@ -57,11 +57,11 @@ This uses the **standard Claude Code `.mcp.json` mechanism**. The agent-runner a
 
 ### How `.mcp.json` gets created
 
-The `.mcp.json` file is **not** created during group registration. Groups are created first (via `@Andy add group "consulting"` in the main channel), then `/add-gmail-multi` assigns Gmail accounts to existing groups by writing `.mcp.json` into their folders.
+The `.mcp.json` file is **not** created during group registration. Groups are created first (via `@Andy add group "consulting"` in the main channel), then `/add-gmail` assigns Gmail accounts to existing groups by writing `.mcp.json` into their folders.
 
 The workflow is two separate steps:
 1. **Create the group** — `@Andy add group "consulting"` (registers the group, creates the folder)
-2. **Assign Gmail** — Run `/add-gmail-multi`, which asks "which group?" and writes the `.mcp.json`
+2. **Assign Gmail** — Run `/add-gmail`, which asks "which group?" and writes the `.mcp.json`
 
 ### Credential Layout
 
@@ -114,7 +114,7 @@ The server is a stdio MCP server — spawned as a child process by the Claude Co
 
 Groups without `.mcp.json` get no extra mounts.
 
-### `/add-gmail-multi` Skill Flow
+### `/add-gmail` Skill Flow
 
 The skill guides the user through setup and group assignment:
 
@@ -162,7 +162,7 @@ Scheduled task fires for work_consulting group
 | File | Change |
 |------|--------|
 | `src/container-runner.ts` | Parse group `.mcp.json` to determine credential mounts |
-| `.claude/skills/add-gmail-multi/SKILL.md` | **New.** Skill for multi-account Gmail setup and group assignment |
+| `.claude/skills/add-gmail/SKILL.md` | **New.** Skill for multi-account Gmail setup and group assignment |
 | `scripts/gmail-oauth.ts` | **New.** OAuth authorization script for adding accounts |
 | `container/agent-runner/src/index.ts` | Possibly one line: add `'mcp__gmail_*'` to allowedTools (only if needed after testing) |
 
@@ -171,7 +171,7 @@ Scheduled task fires for work_consulting group
 1. Verify groups without `.mcp.json` behave identically to today
 2. Set up GCP project with OAuth2 credentials
 3. Authorize 2 Gmail accounts (personal + work)
-4. Create 2 groups, run `/add-gmail-multi` to assign different accounts
+4. Create 2 groups, run `/add-gmail` to assign different accounts
 5. Verify each group's agent only sees its assigned account's tools
 6. Verify tools work: search, read, send, archive
 7. Verify scheduled tasks can process emails autonomously
