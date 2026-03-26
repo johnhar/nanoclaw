@@ -56,9 +56,9 @@ Then use the Edit tool to add `{ "path": "~/.gmail-mcp", "readonly": true }` to 
 
 ## Phase 2: Authorize Gmail Accounts
 
-Ask the user:
+AskUserQuestion: Which Gmail account do you want to authorize?
 
-> Which Gmail account do you want to authorize? (Enter the email address)
+- **Email address** — Enter the full Gmail address (e.g., `user@gmail.com`)
 
 For each account the user provides, run:
 
@@ -74,9 +74,10 @@ ls ~/.gmail-mcp/tokens/<email>.json
 
 If the user sees an "app isn't verified" warning, tell them to click "Advanced" then "Go to [app name] (unsafe)" — this is normal for personal OAuth apps.
 
-Ask:
+AskUserQuestion: Account authorized! Do you want to add another Gmail account?
 
-> Account authorized! Do you want to add another Gmail account? (yes/no)
+- **Yes** — Authorize another Gmail address
+- **No** — Continue to group assignment
 
 Repeat until the user says no.
 
@@ -94,13 +95,15 @@ List authorized accounts:
 ls ~/.gmail-mcp/tokens/
 ```
 
-For each authorized account that hasn't been assigned yet, ask:
+For each authorized account that hasn't been assigned yet:
 
-> Which group should `<email>` be assigned to? (Enter the group folder name, e.g., `work_consulting`)
+AskUserQuestion: Which group should `<email>` be assigned to?
 
-Then ask:
+- **Group folder name** — Enter the folder name (e.g., `work_consulting`)
 
-> What label should the Gmail server use? This becomes the tool prefix — e.g., `consulting` means tools appear as `mcp__gmail_consulting__search_emails`. Suggestion: `<first part of email>`
+AskUserQuestion: What label should the Gmail server use? This becomes the tool prefix — e.g., `consulting` means tools appear as `mcp__gmail_consulting__search_emails`. Suggestion: `<first part of email>`
+
+- **Label name** — A short identifier for this Gmail account
 
 ### Step 3a: Create `.mcp.json` for the group
 
