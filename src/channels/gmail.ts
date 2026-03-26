@@ -424,3 +424,27 @@ export class GmailChannel implements Channel {
     logger.info({ label: this.config.label }, 'Gmail channel disconnected');
   }
 }
+
+// --- Self-registration ---
+// Discover accounts with channel mode enabled and register one factory per account.
+import { GROUPS_DIR } from '../config.js';
+
+const accounts = discoverGmailAccounts(path.dirname(GROUPS_DIR));
+for (const account of accounts) {
+  registerChannel(`gmail_${account.label}`, (opts: ChannelOpts) => {
+    if (!fs.existsSync(account.tokenPath)) {
+      logger.warn({ label: account.label }, 'Gmail: token missing at startup');
+      return null;
+    }
+    return new GmailChannel(account, opts);
+  });
+
+  logger.info(
+    { label: account.label, email: account.email, groups: account.groups },
+    'Gmail channel registered',
+  );
+}
+
+if (accounts.length === 0) {
+  logger.debug('Gmail channel: no accounts with channel mode enabled');
+}
