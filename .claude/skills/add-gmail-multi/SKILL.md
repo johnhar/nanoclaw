@@ -22,18 +22,19 @@ If `gcp-oauth.keys.json` exists, skip to Phase 2 (or Phase 3 if tokens also exis
 
 ### GCP Project Setup
 
-Tell the user:
+Tell the user to set up Google Cloud OAuth credentials:
 
-> I need you to set up Google Cloud OAuth credentials:
->
 > 1. Open https://console.cloud.google.com — create a new project or select existing
 > 2. Go to **APIs & Services > Library**, search "Gmail API", click **Enable**
 > 3. Go to **APIs & Services > Credentials**, click **+ CREATE CREDENTIALS > OAuth client ID**
 >    - If prompted for consent screen: choose "External", fill in app name and email, save
 >    - Application type: **Desktop app**, name: anything (e.g., "NanoClaw Gmail")
 > 4. Click **DOWNLOAD JSON** and save it
->
-> Where did you save the file? (Give me the full path, or paste the file contents here)
+
+AskUserQuestion: Where did you save the OAuth credentials JSON file?
+
+- **File path** — Give the full path to the downloaded JSON file
+- **Paste contents** — Paste the JSON content directly
 
 If user provides a path, copy it:
 
@@ -172,7 +173,7 @@ Alternatively, use the NanoClaw `setRegisteredGroup()` function from `src/db.ts`
 rm -r data/sessions/*/agent-runner-src 2>/dev/null || true
 
 # Rebuild container
-cd container && ./build.sh && cd ..
+./container/build.sh
 
 # Rebuild and restart
 npm run build
