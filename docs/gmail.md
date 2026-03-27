@@ -9,18 +9,18 @@ There are two modes:
 - **Tool-only** — The agent can read, search, and send email when asked. No inbox monitoring.
 - **Channel mode** — `GmailChannel` polls the inbox on an interval and delivers new messages to the group automatically. The agent can also reply.
 
-Setup and ongoing management are handled by two skills: `/add-gmail` and `/manage-gmail`.
+Setup and ongoing management are handled by three skills: `/add-gmail` (initial setup), `/manage-gmail` (ongoing operations), and `/convert-gmail` (migrating from the old single-account integration).
 
 ## Benefits
 
-- **No secret leakage between groups** — Each container only receives the token mounts for its own group. Other groups' credentials are never injected.
 - **Multi-account support** — A group can have multiple Gmail accounts (each with its own label and MCP server entry). Accounts can be shared across groups.
+- **No secret leakage between groups** — Each container only receives the token (mounts) for its own group. Other groups' credentials are never injected.
 - **Flexible assignment** — Accounts can be associated, disassociated, and re-assigned at any time without re-authorizing.
 - **Channel mode** — Groups that need proactive email delivery (e.g., a work inbox that should route support threads to an agent) can enable inbox polling without any additional infrastructure.
 
 ## Comparing With Previous Gmail Skill
 
-The upstream `/add-gmail` skill supported a single Gmail account with credentials hardcoded into the container runner. Our version replaces it entirely:
+The upstream `/add-gmail` skill supported a single Gmail account with credentials and MCP server hardcoded into the container runner. Our version replaces it entirely:
 
 | | Previous | Current |
 |---|---|---|
@@ -30,7 +30,7 @@ The upstream `/add-gmail` skill supported a single Gmail account with credential
 | Channel mode | All-or-nothing, chosen at setup time | Toggleable per account-per-group via `/manage-gmail` |
 | Dependency | `googleapis` (full Google API bundle) | `@googleapis/gmail` (Gmail-only, lightweight) |
 | Management | Manual file/config edits to change anything | `/manage-gmail` skill for associate, disassociate, toggle, remove |
-| MCP server config | Hardcoded in agent-runner source | Per-group `.mcp.json` files |
+| MCP server config | Hardcoded in agent-runner source | Per-group `.mcp.json` files, automatically added by the skills |
 
 **What stayed the same:** GCP OAuth setup flow, `@gongrzhe/server-gmail-autoauth-mcp` as the MCP server, the basic channel architecture (polling, fan-out, threaded replies), and the two-mode concept (tool-only vs channel).
 
@@ -39,9 +39,10 @@ The upstream `/add-gmail` skill supported a single Gmail account with credential
 ### `/add-gmail` — Initial setup
 
 1. **GCP OAuth setup** — If this is the first Gmail account, the skill walks you through creating a Google Cloud project, enabling the Gmail API, and downloading OAuth credentials.
-2. **Account authorization** — Opens Google's consent screen in your browser. Sign in and grant access. You can add multiple accounts in the same session.
-3. **Group assignment** — Pick which group each account belongs to and give it a short label (e.g., `consulting`). The label identifies the account in tools and logs.
-4. **Channel mode** — Choose whether the account should just provide email tools (tool-only) or also monitor the inbox and deliver new emails to the group automatically (channel mode).
+Then, steps 2 - 4 are repeated for each email you want to add:
+2. **Account authorization** — Opens Google's consent screen in your browser. Sign in and grant access. 
+3. **Group assignment** — Pick which group(s) the account belongs to and give it a short label (e.g., `consulting`). The label identifies the account in tools and logs.
+4. **Channel mode** — Choose whether the account should just provide email tools (tool-only) or also monitor the inbox and deliver new emails to the group automatically (channel mode).  This is selectable per account-group pair.
 5. **Build and restart** — NanoClaw rebuilds and restarts to pick up the new configuration.
 
 ### `/manage-gmail` — Ongoing operations
@@ -137,6 +138,27 @@ Each group has one row with `folder` as the primary identifier. For channel mode
 
 - **Group row** — `jid` is the messaging channel JID (e.g., WhatsApp group ID). `container_config` holds `additionalMounts` for all Gmail accounts assigned to that group.
 - **Gmail channel row** — `jid` = `gm:{label}:{group_folder}`, `folder` = `{group_folder}`, `trigger_pattern` = `.*`, `requires_trigger` = `0`. This tells the orchestrator to route inbound Gmail messages to the group's agent without a trigger prefix.
+
+## Migrating From the Old Gmail Integration
+
+If you previously set up Gmail using the old `/add-gmail` skill (which merged code from the `nanoclaw-gmail` remote), use `/convert-gmail` to migrate to the new multi-account system.
+
+### What `/convert-gmail` does
+
+1. **Detects** old artifacts — hardcoded Gmail mount in `container-runner.ts`, Gmail MCP server in `agent-runner`, `credentials.json`, `googleapis` dependency, `gmail` git remote
+2. **Preserves** your GCP OAuth credentials by renaming `credentials.json` to `gcp-oauth.keys.json`
+3. **Removes** old hardcoded changes from `container-runner.ts` and `agent-runner/src/index.ts`
+4. **Cleans up** the `googleapis` dependency, email handling instructions in group `CLAUDE.md` files, the `gmail` git remote, and stale agent-runner caches
+5. **Hands off** to `/add-gmail`, which detects the preserved GCP credentials and skips straight to account authorization
+
+### What you'll need to do
+
+- Re-authorize via browser OAuth (~30 seconds) — the old system managed tokens internally; the new system stores per-account tokens at `~/.gmail-mcp/tokens/{email}.json`
+- Choose which groups to associate the account with and whether to enable channel mode
+
+### Why not just re-run `/add-gmail`?
+
+The old skill hardcoded Gmail support into `container-runner.ts` and `agent-runner/src/index.ts`. The new system doesn't use either file. If you skip `/convert-gmail`, those stale hardcoded entries remain and may conflict with the per-group MCP approach.
 
 ## Developer Guide
 
