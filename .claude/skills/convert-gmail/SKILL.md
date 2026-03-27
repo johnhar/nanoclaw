@@ -67,10 +67,10 @@ If the user declines, stop here.
 If `~/.gmail-mcp/credentials.json` or `~/.gmail-mcp/gcp-oauth.keys.json` exists, copy to the new directory:
 
 ```bash
-mkdir -p ~/.multi-gmail-mcp
-cp ~/.gmail-mcp/gcp-oauth.keys.json ~/.multi-gmail-mcp/gcp-oauth.keys.json 2>/dev/null || true
+mkdir -p data/gmail
+cp ~/.gmail-mcp/gcp-oauth.keys.json data/gmail/gcp-oauth.keys.json 2>/dev/null || true
 # Old format used credentials.json — copy as gcp-oauth.keys.json
-cp ~/.gmail-mcp/credentials.json ~/.multi-gmail-mcp/gcp-oauth.keys.json 2>/dev/null || true
+cp ~/.gmail-mcp/credentials.json data/gmail/gcp-oauth.keys.json 2>/dev/null || true
 ```
 
 Use `cp` instead of `mv` so the old files remain as a backup until conversion is verified.
@@ -125,7 +125,7 @@ grep -n 'gmail' container/agent-runner/src/index.ts 2>/dev/null || echo "CLEAN"
 grep '"googleapis"' package.json 2>/dev/null || echo "CLEAN"
 
 # Confirm GCP credentials are in the new location
-ls ~/.multi-gmail-mcp/gcp-oauth.keys.json 2>/dev/null || echo "MISSING_GCP_KEYS"
+ls data/gmail/gcp-oauth.keys.json 2>/dev/null || echo "MISSING_GCP_KEYS"
 ```
 
 If any check fails (except GCP keys which were already handled), investigate and fix before proceeding.
@@ -134,8 +134,8 @@ If any check fails (except GCP keys which were already handled), investigate and
 
 Tell the user:
 
-> Old Gmail integration removed. Your GCP OAuth credentials have been preserved at `~/.multi-gmail-mcp/`. Now let's set up the new multi-account Gmail.
+> Old Gmail integration removed. Your GCP OAuth credentials have been preserved at `data/gmail/`. Now let's set up the new multi-account Gmail.
 
-Invoke `/add-multi-gmail`. Since `~/.multi-gmail-mcp/gcp-oauth.keys.json` already exists, it will skip GCP setup and go straight to account authorization.
+Invoke `/add-multi-gmail`. Since `data/gmail/gcp-oauth.keys.json` already exists, it will skip GCP setup and go straight to account authorization.
 
 See `docs/multi-gmail.md` for architecture details and comparison with the old system.

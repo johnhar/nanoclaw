@@ -1,15 +1,14 @@
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 import { gmail_v1, auth as gmailAuth } from '@googleapis/gmail';
 
+import { GMAIL_DATA_DIR, GROUPS_DIR } from '../config.js';
 import { logger } from '../logger.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import { Channel, NewMessage } from '../types.js';
 
-const GMAIL_MCP_DIR = path.join(os.homedir(), '.multi-gmail-mcp');
-const TOKENS_DIR = path.join(GMAIL_MCP_DIR, 'tokens');
-const CHANNEL_CONFIG_PATH = path.join(GMAIL_MCP_DIR, 'channel-config.json');
+const TOKENS_DIR = path.join(GMAIL_DATA_DIR, 'tokens');
+const CHANNEL_CONFIG_PATH = path.join(GMAIL_DATA_DIR, 'channel-config.json');
 
 export interface GmailAccountConfig {
   label: string;
@@ -22,7 +21,7 @@ export interface GmailAccountConfig {
 }
 
 /**
- * Scan ~/.gmail-mcp/tokens/ and group .mcp.json files to discover
+ * Scan data/gmail/tokens/ and group .mcp.json files to discover
  * accounts that have channel mode enabled in at least one group.
  */
 export function discoverGmailAccounts(
@@ -113,7 +112,7 @@ export function discoverGmailAccounts(
       pollInterval: acctConfig.pollInterval || 30,
       filter: acctConfig.filter || 'is:unread category:primary',
       tokenPath: path.join(TOKENS_DIR, `${email}.json`),
-      oauthKeysPath: path.join(GMAIL_MCP_DIR, 'gcp-oauth.keys.json'),
+      oauthKeysPath: path.join(GMAIL_DATA_DIR, 'gcp-oauth.keys.json'),
     });
   }
 
@@ -427,7 +426,6 @@ export class GmailChannel implements Channel {
 
 // --- Self-registration ---
 // Discover accounts with channel mode enabled and register one factory per account.
-import { GROUPS_DIR } from '../config.js';
 
 const accounts = discoverGmailAccounts(path.dirname(GROUPS_DIR));
 for (const account of accounts) {

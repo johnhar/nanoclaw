@@ -12,7 +12,7 @@ This skill manages Gmail accounts that have already been set up with `/add-multi
 ### Gather state
 
 ```bash
-ls ~/.multi-gmail-mcp/tokens/ 2>/dev/null || echo "NO_TOKENS"
+ls data/gmail/tokens/ 2>/dev/null || echo "NO_TOKENS"
 ```
 
 ```bash
@@ -31,17 +31,17 @@ sqlite3 store/messages.db "SELECT folder, container_config FROM registered_group
 ```
 
 ```bash
-cat ~/.multi-gmail-mcp/channel-config.json 2>/dev/null || echo "NO_CHANNEL_CONFIG"
+cat data/gmail/channel-config.json 2>/dev/null || echo "NO_CHANNEL_CONFIG"
 ```
 
 ### Parse and present
 
 From the gathered data, build a summary table:
 
-- **Tokens:** Each file in `~/.multi-gmail-mcp/tokens/` is `{email}.json` — these are authorized accounts.
+- **Tokens:** Each file in `data/gmail/tokens/` is `{email}.json` — these are authorized accounts.
 - **MCP entries:** In each group's `.mcp.json`, keys matching `gmail_*` in `mcpServers` are Gmail servers. The label is the key minus the `gmail_` prefix. The email is extracted from `GMAIL_CREDENTIALS_PATH` — the segment between `gmail/` and `/token.json`.
 - **Mode:** If `gmailChannel.{label}.enabled` is `true` in the group's `.mcp.json`, mode is `channel`. If the `gmailChannel.{label}` entry exists but `enabled` is `false`, mode is `tool-only`. If there is no `gmailChannel` entry for that label, mode is `tool-only`.
-- **Token validation:** If a `.mcp.json` references a token file that doesn't exist in `~/.multi-gmail-mcp/tokens/`, flag it as `(token missing)`.
+- **Token validation:** If a `.mcp.json` references a token file that doesn't exist in `data/gmail/tokens/`, flag it as `(token missing)`.
 
 Present to the user:
 
@@ -114,12 +114,12 @@ Update `containerConfig.additionalMounts` to include the Gmail credential mounts
 {
   "additionalMounts": [
     {
-      "hostPath": "~/.multi-gmail-mcp/tokens/{email}.json",
+      "hostPath": "data/gmail/tokens/{email}.json",
       "containerPath": "gmail/{email}/token.json",
       "readonly": true
     },
     {
-      "hostPath": "~/.multi-gmail-mcp/gcp-oauth.keys.json",
+      "hostPath": "data/gmail/gcp-oauth.keys.json",
       "containerPath": "gmail/gcp-oauth.keys.json",
       "readonly": true
     }
@@ -154,7 +154,7 @@ If channel mode enabled:
    }
    ```
 
-2. If `~/.multi-gmail-mcp/channel-config.json` doesn't have an entry for this account, create one with defaults.
+2. If `data/gmail/channel-config.json` doesn't have an entry for this account, create one with defaults.
 
 3. Register the channel JID (`gm:{label}:{group_folder}`) in the `registered_groups` table.
 
@@ -256,7 +256,7 @@ On confirm:
 
 1. Update `gmailChannel.{label}.enabled` in `groups/{name}/.mcp.json` to the new value (`true` or `false`).
 
-2. If enabling and `~/.multi-gmail-mcp/channel-config.json` doesn't have an entry for this account, create one with defaults.
+2. If enabling and `data/gmail/channel-config.json` doesn't have an entry for this account, create one with defaults.
 
 3. If enabling, register the channel JID (`gm:{label}:{group_folder}`) in `registered_groups`.
 
@@ -306,10 +306,10 @@ On confirm:
 2. Delete the token file:
 
    ```bash
-   rm ~/.multi-gmail-mcp/tokens/{email}.json
+   rm data/gmail/tokens/{email}.json
    ```
 
-3. Remove the account entry from `~/.multi-gmail-mcp/channel-config.json` if present.
+3. Remove the account entry from `data/gmail/channel-config.json` if present.
 
 4. Rebuild and restart:
 
@@ -343,4 +343,4 @@ Common issues:
 
 - **Token missing:** If the summary table shows `(token missing)`, re-authorize the account with `/add-multi-gmail`.
 - **Channel mode not taking effect:** Channel registration changes require a restart. Make sure the rebuild and restart completed successfully.
-- **Mount errors:** Check that `~/.multi-gmail-mcp` is in the mount allowlist at `~/.config/nanoclaw/mount-allowlist.json`.
+- **Mount errors:** Check that `data/gmail` is in the mount allowlist at `~/.config/nanoclaw/mount-allowlist.json`.

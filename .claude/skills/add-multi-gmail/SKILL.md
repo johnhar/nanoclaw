@@ -38,8 +38,8 @@ grep "from 'googleapis'" src/channels/gmail.ts 2>/dev/null || echo "NO_OLD_GMAIL
 ### Check prerequisites
 
 ```bash
-ls ~/.multi-gmail-mcp/gcp-oauth.keys.json 2>/dev/null || echo "NO_OAUTH_KEYS"
-ls ~/.multi-gmail-mcp/tokens/ 2>/dev/null || echo "NO_TOKENS_DIR"
+ls data/gmail/gcp-oauth.keys.json 2>/dev/null || echo "NO_OAUTH_KEYS"
+ls data/gmail/tokens/ 2>/dev/null || echo "NO_TOKENS_DIR"
 ls -d groups/*/ 2>/dev/null | grep -v global
 cat ~/.config/nanoclaw/mount-allowlist.json 2>/dev/null || echo "NO_ALLOWLIST"
 ```
@@ -65,21 +65,21 @@ AskUserQuestion: Where did you save the OAuth credentials JSON file?
 If user provides a path, copy it:
 
 ```bash
-mkdir -p ~/.multi-gmail-mcp
-cp "/path/user/provided" ~/.multi-gmail-mcp/gcp-oauth.keys.json
+mkdir -p data/gmail
+cp "/path/user/provided" data/gmail/gcp-oauth.keys.json
 ```
 
-If user pastes JSON content, write it to `~/.multi-gmail-mcp/gcp-oauth.keys.json`.
+If user pastes JSON content, write it to `data/gmail/gcp-oauth.keys.json`.
 
 ### Configure mount allowlist
 
-Add `~/.multi-gmail-mcp` as an allowed root so NanoClaw can mount credential files into containers. First read the current allowlist with the Read tool:
+Add `data/gmail` as an allowed root so NanoClaw can mount credential files into containers. First read the current allowlist with the Read tool:
 
 ```
 ~/.config/nanoclaw/mount-allowlist.json
 ```
 
-Then use the Edit tool to add `{ "path": "~/.multi-gmail-mcp", "readonly": true }` to the `allowedRoots` array. Merge with existing entries — don't overwrite other allowed roots.
+Then use the Edit tool to add `{ "path": "data/gmail", "readonly": true }` to the `allowedRoots` array. Merge with existing entries — don't overwrite other allowed roots.
 
 ## Phase 2: Authorize Gmail Accounts
 
@@ -100,7 +100,7 @@ If the user sees an "app isn't verified" warning, tell them to click "Advanced" 
 The script waits for the OAuth callback and exits automatically on success. After it completes, verify the token was saved:
 
 ```bash
-ls ~/.multi-gmail-mcp/tokens/<email>.json
+ls data/gmail/tokens/<email>.json
 ```
 
 If the token file exists, authorization succeeded:
@@ -131,7 +131,7 @@ ls -d groups/*/ | grep -v global
 List authorized accounts:
 
 ```bash
-ls ~/.multi-gmail-mcp/tokens/
+ls data/gmail/tokens/
 ```
 
 For each authorized account that hasn't been assigned yet:
@@ -163,7 +163,7 @@ If the user chooses channel mode:
 
 Merge with existing `.mcp.json` content — don't overwrite.
 
-2. Create or update `~/.multi-gmail-mcp/channel-config.json` with defaults if this account doesn't have an entry yet:
+2. Create or update `data/gmail/channel-config.json` with defaults if this account doesn't have an entry yet:
 
 ```json
 {
@@ -225,12 +225,12 @@ Update `containerConfig.additionalMounts` to include the Gmail credential mounts
 {
   "additionalMounts": [
     {
-      "hostPath": "~/.multi-gmail-mcp/tokens/<email>.json",
+      "hostPath": "data/gmail/tokens/<email>.json",
       "containerPath": "gmail/<email>/token.json",
       "readonly": true
     },
     {
-      "hostPath": "~/.multi-gmail-mcp/gcp-oauth.keys.json",
+      "hostPath": "data/gmail/gcp-oauth.keys.json",
       "containerPath": "gmail/gcp-oauth.keys.json",
       "readonly": true
     }
@@ -297,7 +297,7 @@ Check that the mounts were configured. Query SQLite:
 sqlite3 store/messages.db "SELECT container_config FROM registered_groups WHERE folder = '<group_folder>'"
 ```
 
-Verify the mount allowlist includes `~/.multi-gmail-mcp`:
+Verify the mount allowlist includes `data/gmail`:
 
 ```bash
 cat ~/.config/nanoclaw/mount-allowlist.json
@@ -306,7 +306,7 @@ cat ~/.config/nanoclaw/mount-allowlist.json
 Verify token file exists on host:
 
 ```bash
-ls ~/.multi-gmail-mcp/tokens/<email>.json
+ls data/gmail/tokens/<email>.json
 ```
 
 ### Mount blocked by security

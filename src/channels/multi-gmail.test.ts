@@ -5,7 +5,10 @@ import type { GmailAccountConfig } from './multi-gmail.js';
 
 // Mock filesystem for discovery tests
 vi.mock('fs');
-vi.mock('os', () => ({ default: { homedir: () => '/mock-home' } }));
+vi.mock('../config.js', () => ({
+  GMAIL_DATA_DIR: '/mock-project/data/gmail',
+  GROUPS_DIR: '/mock-project/groups',
+}));
 
 describe('Gmail channel discovery', () => {
   beforeEach(() => {
@@ -121,8 +124,8 @@ describe('GmailChannel', () => {
     groups: ['work_team'],
     pollInterval: 30,
     filter: 'is:unread category:primary',
-    tokenPath: '/mock-home/.gmail-mcp/tokens/test@gmail.com.json',
-    oauthKeysPath: '/mock-home/.gmail-mcp/gcp-oauth.keys.json',
+    tokenPath: '/mock-project/data/gmail/tokens/test@gmail.com.json',
+    oauthKeysPath: '/mock-project/data/gmail/gcp-oauth.keys.json',
   };
 
   const mockOpts: ChannelOpts = {

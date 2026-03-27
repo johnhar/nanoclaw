@@ -7,22 +7,22 @@
  *   npx tsx scripts/gmail-oauth.ts user@example.com  # Authorize specific account
  *
  * Prerequisites:
- *   ~/.gmail-mcp/gcp-oauth.keys.json must exist (GCP OAuth2 client credentials)
+ *   data/gmail/gcp-oauth.keys.json must exist (GCP OAuth2 client credentials)
  *
  * Output:
- *   ~/.gmail-mcp/tokens/<email>.json (refresh token for the account)
+ *   data/gmail/tokens/<email>.json (refresh token for the account)
  */
 import fs from 'fs';
 import http from 'http';
 import open from 'open';
-import os from 'os';
 import path from 'path';
 import readline from 'readline';
 import { OAuth2Client } from 'google-auth-library';
 
-const GMAIL_MCP_DIR = path.join(os.homedir(), '.gmail-mcp');
-const OAUTH_KEYS_PATH = path.join(GMAIL_MCP_DIR, 'gcp-oauth.keys.json');
-const TOKENS_DIR = path.join(GMAIL_MCP_DIR, 'tokens');
+const PROJECT_ROOT = path.resolve(__dirname, '..');
+const GMAIL_DATA_DIR = path.join(PROJECT_ROOT, 'data', 'gmail');
+const OAUTH_KEYS_PATH = path.join(GMAIL_DATA_DIR, 'gcp-oauth.keys.json');
+const TOKENS_DIR = path.join(GMAIL_DATA_DIR, 'tokens');
 
 async function askEmail(): Promise<string> {
   const rl = readline.createInterface({
