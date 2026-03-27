@@ -11,4 +11,7 @@ import './gmail.js';
 
 // telegram
 
+// multi-gmail
+import './multi-gmail.js';
+
 // whatsapp

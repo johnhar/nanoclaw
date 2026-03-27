@@ -1,19 +1,45 @@
 ---
-name: add-gmail-multi
-description: Add multi-account Gmail to NanoClaw. Supports multiple Gmail accounts with per-group access. Each group gets its own Gmail MCP server via .mcp.json and credential mounts via containerConfig.additionalMounts. Guides through GCP OAuth setup, per-account authorization, and group assignment.
+name: add-multi-gmail
+description: Add Gmail to NanoClaw with multi-account support. Each group can have one or more Gmail accounts, each accessed via its own MCP server configured in .mcp.json with credential mounts via containerConfig.additionalMounts. Guides through GCP OAuth setup, per-account authorization, and group assignment.
 ---
 
 # Add Multi-Account Gmail
 
-This skill sets up Gmail access for multiple accounts, with each NanoClaw group accessing only its assigned Gmail account.
+This skill sets up Gmail access for NanoClaw groups. Each group can have one or more Gmail accounts, and the same account can be shared across multiple groups.
 
 ## Phase 1: Pre-flight
+
+### Check if already applied
+
+Check if `src/channels/multi-gmail.ts` exists. If it does, skip to Phase 2 (Setup). The code changes are already in place.
+
+### Merge the skill branch
+
+```bash
+# TODO: Maintainers — change remote and branch to: upstream skill/multi-gmail
+git remote add johnhar https://github.com/johnhar/nanoclaw.git 2>/dev/null || true
+git fetch johnhar skill/multi-gmail
+git merge johnhar/skill/multi-gmail
+npm install
+npm run build
+```
+
+### Check for old Gmail integration
+
+After merge, check if old Gmail exists by looking for `src/channels/gmail.ts` that imports `from 'googleapis'` (not `from '@googleapis/gmail'`):
+
+```bash
+grep "from 'googleapis'" src/channels/gmail.ts 2>/dev/null || echo "NO_OLD_GMAIL"
+```
+
+- **Old detected** — Tell user: "Old single-account Gmail integration detected. Run `/convert-gmail` to clean it up, then run `/add-multi-gmail` again." **Stop here.**
+- **Not detected** — Continue to Phase 2
 
 ### Check prerequisites
 
 ```bash
-ls ~/.gmail-mcp/gcp-oauth.keys.json 2>/dev/null || echo "NO_OAUTH_KEYS"
-ls ~/.gmail-mcp/tokens/ 2>/dev/null || echo "NO_TOKENS_DIR"
+ls ~/.multi-gmail-mcp/gcp-oauth.keys.json 2>/dev/null || echo "NO_OAUTH_KEYS"
+ls ~/.multi-gmail-mcp/tokens/ 2>/dev/null || echo "NO_TOKENS_DIR"
 ls -d groups/*/ 2>/dev/null | grep -v global
 cat ~/.config/nanoclaw/mount-allowlist.json 2>/dev/null || echo "NO_ALLOWLIST"
 ```
@@ -39,29 +65,27 @@ AskUserQuestion: Where did you save the OAuth credentials JSON file?
 If user provides a path, copy it:
 
 ```bash
-mkdir -p ~/.gmail-mcp
-cp "/path/user/provided" ~/.gmail-mcp/gcp-oauth.keys.json
+mkdir -p ~/.multi-gmail-mcp
+cp "/path/user/provided" ~/.multi-gmail-mcp/gcp-oauth.keys.json
 ```
 
-If user pastes JSON content, write it to `~/.gmail-mcp/gcp-oauth.keys.json`.
+If user pastes JSON content, write it to `~/.multi-gmail-mcp/gcp-oauth.keys.json`.
 
 ### Configure mount allowlist
 
-Add `~/.gmail-mcp` as an allowed root so NanoClaw can mount credential files into containers. First read the current allowlist with the Read tool:
+Add `~/.multi-gmail-mcp` as an allowed root so NanoClaw can mount credential files into containers. First read the current allowlist with the Read tool:
 
 ```
 ~/.config/nanoclaw/mount-allowlist.json
 ```
 
-Then use the Edit tool to add `{ "path": "~/.gmail-mcp", "readonly": true }` to the `allowedRoots` array. Merge with existing entries — don't overwrite other allowed roots.
+Then use the Edit tool to add `{ "path": "~/.multi-gmail-mcp", "readonly": true }` to the `allowedRoots` array. Merge with existing entries — don't overwrite other allowed roots.
 
 ## Phase 2: Authorize Gmail Accounts
 
-AskUserQuestion: Which Gmail account do you want to authorize?
+Ask the user: "Which Gmail address do you want to authorize? (e.g., `user@gmail.com`)"
 
-- **Email address** — Enter the full Gmail address (e.g., `user@gmail.com`)
-
-For each account the user provides, run:
+Wait for the user to type an email address, then run:
 
 ```bash
 npx tsx scripts/gmail-oauth.ts <email>
@@ -76,7 +100,7 @@ If the user sees an "app isn't verified" warning, tell them to click "Advanced" 
 The script waits for the OAuth callback and exits automatically on success. After it completes, verify the token was saved:
 
 ```bash
-ls ~/.gmail-mcp/tokens/<email>.json
+ls ~/.multi-gmail-mcp/tokens/<email>.json
 ```
 
 If the token file exists, authorization succeeded:
@@ -92,7 +116,7 @@ AskUserQuestion: What would you like to do?
 
 - **Retry** — Open the consent screen again for the same account
 - **Different account** — Try a different Gmail address instead
-- **Skip** — Continue without this account (you can add it later with `/add-gmail-multi`)
+- **Skip** — Continue without this account (you can add it later with `/add-multi-gmail`)
 
 Repeat until the user says no or skip.
 
@@ -107,7 +131,7 @@ ls -d groups/*/ | grep -v global
 List authorized accounts:
 
 ```bash
-ls ~/.gmail-mcp/tokens/
+ls ~/.multi-gmail-mcp/tokens/
 ```
 
 For each authorized account that hasn't been assigned yet:
@@ -119,6 +143,50 @@ AskUserQuestion: Which group should `<email>` be assigned to?
 AskUserQuestion: What label should the Gmail server use? This becomes the tool prefix — e.g., `consulting` means tools appear as `mcp__gmail_consulting__search_emails`. Suggestion: `<first part of email>`
 
 - **Label name** — A short identifier for this Gmail account
+
+AskUserQuestion: Should incoming emails on `<label>` (`<email>`) automatically trigger the agent in `<group>`?
+
+- **Yes** — Channel mode: new Primary inbox emails are delivered to the group automatically
+- **No** — Tool-only: the agent can read/send email when asked, but won't monitor the inbox
+
+If the user chooses channel mode:
+
+1. Add `gmailChannel` config to the group's `.mcp.json`:
+
+```json
+{
+  "gmailChannel": {
+    "<label>": { "enabled": true }
+  }
+}
+```
+
+Merge with existing `.mcp.json` content — don't overwrite.
+
+2. Create or update `~/.multi-gmail-mcp/channel-config.json` with defaults if this account doesn't have an entry yet:
+
+```json
+{
+  "<label>": {
+    "pollInterval": 30,
+    "filter": "is:unread category:primary"
+  }
+}
+```
+
+3. Register the channel JID in `registered_groups`:
+
+```bash
+sqlite3 store/messages.db "INSERT OR REPLACE INTO registered_groups (jid, name, folder, trigger_pattern, added_at, requires_trigger) VALUES ('gm:<label>:<group_folder>', 'Gmail (<label>)', '<group_folder>', '.*', datetime('now'), 0)"
+```
+
+4. Add email handling instructions to the group's `CLAUDE.md` (before the formatting section, if any):
+
+```markdown
+## Email Notifications
+
+When you receive an email notification (messages starting with `[Email from ...`), inform the user about it but do NOT reply to the email unless specifically asked. You have Gmail tools available — use them only when the user explicitly asks you to reply, forward, or take action on an email.
+```
 
 ### Step 3a: Create `.mcp.json` for the group
 
@@ -148,7 +216,7 @@ This makes the credential files available inside the container. Uses NanoClaw's 
 Read the group's current config from SQLite:
 
 ```bash
-sqlite3 data/nanoclaw.db "SELECT container_config FROM registered_groups WHERE folder = '<group_folder>'"
+sqlite3 store/messages.db "SELECT container_config FROM registered_groups WHERE folder = '<group_folder>'"
 ```
 
 Update `containerConfig.additionalMounts` to include the Gmail credential mounts. The mounts use `additionalMounts` format where `containerPath` is relative (mounted at `/workspace/extra/<containerPath>`):
@@ -157,12 +225,12 @@ Update `containerConfig.additionalMounts` to include the Gmail credential mounts
 {
   "additionalMounts": [
     {
-      "hostPath": "~/.gmail-mcp/tokens/<email>.json",
+      "hostPath": "~/.multi-gmail-mcp/tokens/<email>.json",
       "containerPath": "gmail/<email>/token.json",
       "readonly": true
     },
     {
-      "hostPath": "~/.gmail-mcp/gcp-oauth.keys.json",
+      "hostPath": "~/.multi-gmail-mcp/gcp-oauth.keys.json",
       "containerPath": "gmail/gcp-oauth.keys.json",
       "readonly": true
     }
@@ -173,7 +241,7 @@ Update `containerConfig.additionalMounts` to include the Gmail credential mounts
 Merge with any existing `additionalMounts` — don't overwrite. Write back to SQLite:
 
 ```bash
-sqlite3 data/nanoclaw.db "UPDATE registered_groups SET container_config = '<json>' WHERE folder = '<group_folder>'"
+sqlite3 store/messages.db "UPDATE registered_groups SET container_config = '<json>' WHERE folder = '<group_folder>'"
 ```
 
 Alternatively, use the NanoClaw `setRegisteredGroup()` function from `src/db.ts` if running from within Node.js.
@@ -226,10 +294,10 @@ cat groups/<name>/.mcp.json | python3 -m json.tool
 Check that the mounts were configured. Query SQLite:
 
 ```bash
-sqlite3 data/nanoclaw.db "SELECT container_config FROM registered_groups WHERE folder = '<group_folder>'"
+sqlite3 store/messages.db "SELECT container_config FROM registered_groups WHERE folder = '<group_folder>'"
 ```
 
-Verify the mount allowlist includes `~/.gmail-mcp`:
+Verify the mount allowlist includes `~/.multi-gmail-mcp`:
 
 ```bash
 cat ~/.config/nanoclaw/mount-allowlist.json
@@ -238,7 +306,7 @@ cat ~/.config/nanoclaw/mount-allowlist.json
 Verify token file exists on host:
 
 ```bash
-ls ~/.gmail-mcp/tokens/<email>.json
+ls ~/.multi-gmail-mcp/tokens/<email>.json
 ```
 
 ### Mount blocked by security
@@ -255,8 +323,4 @@ npx tsx scripts/gmail-oauth.ts <email>
 
 ### Adding another account later
 
-Re-run `/add-gmail-multi`. It detects existing setup and skips to account authorization.
-
-### Conflict with `/add-gmail`
-
-If you previously ran `/add-gmail`, it hardcoded a single Gmail MCP server into the agent-runner. This will give all groups a `gmail` server in addition to any per-group `gmail_<label>` servers from `.mcp.json`. To avoid confusion, remove the hardcoded server from `container/agent-runner/src/index.ts` (the `gmail` entry in `mcpServers` and `mcp__gmail__*` in `allowedTools`), then rebuild the container.
+Re-run `/add-multi-gmail`. It detects existing setup and skips to account authorization.
